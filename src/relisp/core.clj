@@ -5,8 +5,13 @@
   {
    :+ + :- - :* * :/ /
    :> > :< < :>= >= :<= <=
-   :nil nil :not not
-
+   ;:and and :or or
+   :logand bit-and :logior bit-or :eq == :not not
+   :1+ inc :1- dec
+   :floor (fn [x y] [(int (/ x y)) (rem x y)])
+   :ceiling (fn cel ([x] (cel x 1)) ([x y] [(let [r (/ x y)] (cond (integer? r) r :else (int (inc r)))) (rem x y)]) )
+   :max max :min min :round #(int (+ 0.5 %))
+   :nil nil
    })
 (def regex-strings
   {
@@ -102,7 +107,13 @@
   [input-str]
   (let [x (subs input-str 0 (cls/index-of input-str " "))]
     [(parse-keyword x),(subs input-str (inc (count x)))]))
-
+(defn parse-spl-form
+  [input-str]
+  (let [form (some #(cls/starts-with? input-str %) '("if"))]
+    (case form
+      nil [nil input-str]
+      "if" ))
+  )
 (def factory-parsers (list parse-parens parse-boolean parse-number parse-string))
 
 (defn parse-values
