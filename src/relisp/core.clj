@@ -5,6 +5,7 @@
   {
    :+ + :- - :* * :/ /
    :> > :< < :>= >= :<= <=
+   := =
    ;:and and :or or
    :logand bit-and :logior bit-or :eq == :not not
    :1+ inc :1- dec
@@ -12,6 +13,8 @@
    :ceiling (fn cel ([x] (cel x 1)) ([x y] [(let [r (/ x y)] (cond (integer? r) r :else (int (inc r)))) (rem x y)]) )
    :max max :min min :round #(int (+ 0.5 %))
    :nil nil
+   ; list functions
+   ;:append conj :car first :cdr rest
    })
 (def regex-strings
   {
@@ -102,18 +105,30 @@
   [input-str]
   (let [x (get env (keyword input-str))]
     x))
+(declare parse-spl-form)
 (defn get-next-token
-  "Gets the next argument in the argument list"
+  ""
   [input-str]
-  (let [x (subs input-str 0 (cls/index-of input-str " "))]
-    [(parse-keyword x),(subs input-str (inc (count x)))]))
+  (let [x (subs input-str 0 (or (cls/index-of input-str " ") (count input-str) 30))] ;assuming name cannot be longer than 30
+    (let [form (parse-spl-form x)]
+      (if (nil? form)
+        [(parse-keyword x),(subs input-str (count x))]
+        [form (subs input-str (count form))]
+        ))
+    ))
+(def spl-forms '("if" "lambda"))
 (defn parse-spl-form
-  [input-str]
-  (let [form (some #(cls/starts-with? input-str %) '("if"))]
-    (case form
-      nil [nil input-str]
-      "if" ))
-  )
+  [input]
+  (let [form  ((fn [[x & xs]]
+                 (if (nil? x)
+                    nil
+                    (if (= input x)
+                      x
+                      (recur xs)))
+                   ) spl-forms)]
+    (if (nil? form)
+      nil
+      form)))
 (def factory-parsers (list parse-parens parse-boolean parse-number parse-string))
 
 (defn parse-values
@@ -158,5 +173,6 @@
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (println (parse "(+ 6  5)"))
+  ;(println (parse "(+ 6  5)"))
+  (println (get-next-token "if as"))
   )
