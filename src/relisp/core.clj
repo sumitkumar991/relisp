@@ -12,19 +12,25 @@
    :floor (fn [x y] [(int (/ x y)) (rem x y)])
    :ceiling (fn cel ([x] (cel x 1)) ([x y] [(let [r (/ x y)] (cond (integer? r) r :else (int (inc r)))) (rem x y)]) )
    :max max :min min :round #(int (+ 0.5 %))
-   :nil nil
+   :nil "null"
    ; list functions
    ;:append conj :car first :cdr rest
    })
+(def global-env {})                                         ;keeps all globals as k/v pairs
+
+(def MAX-LEN 30)
+
 (def regex-strings
   {
    :inte #"(-?\s*?(?:0|[1-9])[0-9]*)?"
    :doublee #"^([-]?\s*(?:0|[1-9])\d*(?:\.\d)+?\d*(?:[eE][+-]?\d+)?)(?:.|\n)*?$" ; fails for "323e4"
    :stringg #"([\"])(?:(?=(\\?))\2.)*?\1"
    })
+
 (defn get-string
   [input]
   (get (re-find (:stringg regex-strings) input) 0))
+
 (defn parse-string
   [input-str]
   (if (= \" (first input-str))
@@ -33,15 +39,15 @@
         [x (subs input-str (count x))]
         [nil input-str]))
     [nil input-str]))
-
-(defn parse-null
-  "Parses null values to nil"
-  [input-str]
-  (if (nil? input-str)
-    [nil nil]
-    (if (cls/starts-with? input-str "null")
-      ["null" (subs input-str 4)]
-      [nil input-str])))
+;
+;(defn parse-null
+;  "Parses null values to nil"
+;  [input-str]
+;  (if (nil? input-str)
+;    [nil nil]
+;    (if (cls/starts-with? input-str "null")
+;      ["null" (subs input-str 4)]
+;      [nil input-str])))
 
 (def esc-list '(\space \backspace \newline \formfeed \tab \return))
 (defn parse-space
@@ -64,6 +70,7 @@
     (if (some #(= (first input-str) %) '(\( \)))
       [(first input-str) (subs input-str 1)]
       [nil input-str])))
+
 (defn parse-boolean
   "Parses the string value to bool value"
   [input-str]
@@ -91,6 +98,7 @@
     (if result
       [(Double/parseDouble (cls/replace result " " "")) (subs input-str (count result))]
       [nil input-str])))
+
 (defn parse-number
   "Parses given string for numeric types"
   [input-str]
@@ -100,23 +108,38 @@
       (let [[a b] (parse-int input-str)]
         (if a [a b]
               [a b])))))
+
 (defn parse-keyword
   "Returns  the string for possible keyword"
   [input-str]
   (let [x (get env (keyword input-str))]
-    (if (nil? x)
-      (get env input-str)
-      x)))
+    x))
+
+(defn check-global-env
+  "Check global environment for variable values"
+  [input]
+  (get global-env input))
+
 (declare parse-spl-form)
-(defn get-next-token
-  ""
+
+(defn get-token
+  "Gets 1st token separated by space or ends with )"
   [input-str]
-  (let [x (subs input-str 0 (or (cls/index-of input-str " ") (cls/index-of input-str ")") (count input-str) 30))] ;assuming name cannot be longer than 30
+  (let [x (subs input-str 0 (or (cls/index-of input-str " ") (cls/index-of input-str ")") (count input-str)))]
+    [x (subs input-str (count x))])
+  )
+(defn get-next-token
+  "Parses & checks if next token is spl form or keyword or is a global variable in order"
+  [input-str]
+  (let [[x xs] (get-token input-str)] ;assuming name cannot be longer todo
     (let [form (parse-spl-form x)]
       (if (nil? form)
         (let [result (parse-keyword x)]
           (if (nil? result)
-            [x (subs input-str (count x))]
+            (let [res-var (check-global-env x)]
+              (if (nil? res-var)
+                [x (subs input-str (count x))]
+                [res-var (subs input-str (count x))]))
             [result (subs input-str (count x))]))
         [form (subs input-str (count form))]
         ))
@@ -134,11 +157,17 @@
     (if (nil? form)
       nil
       form)))
+
 (defn parse-vars
+  "Checks the global env for variables"
   [input-str]
-  (get-next-token input-str)
+  (let [[token remain] (get-token input-str)]
+    (let [x (check-global-env token)]
+      (if (nil? x)
+        [nil input-str]
+        [x remain])))
   )
-(def factory-parsers (list parse-parens parse-boolean parse-number parse-string parse-vars))
+(def factory-parsers (list parse-parens parse-boolean parse-number parse-string parse-vars get-next-token)) ;order of parse-vars & get-next-token is !imp
 
 (defn parse-values
   "Tries all parsers & return when a parser can parse the value"
@@ -170,20 +199,19 @@
                     (if (= \) (first remain))
                       (case func
                         "if" [(if (args 0) (args 1) (args 2)) (subs remain 1)]
-                        "define" (do (def env (assoc env (args 0) (args 1)))
+                        "define" (do (def global-env (assoc global-env (args 0) (args 1)))
                                      [nil (subs remain 1)])
                         [(apply func args) (subs remain 1)]
                         )
                         (let [[arg rem-str] (parse remain)]
                           (cond
                             (nil? arg) (do (println "Unexpected Termination missing ')'") (System/exit 0))
-                            :else (recur (conj args arg) rem-str))
-                          )
-                      ))]
-              [result remaining]))
+                            :else (recur (conj args arg) rem-str)))))]
+              [result remaining])
+            )
           )
         ;it is an argument
-        [res rem])))
+        [(if (= res "null") nil res) rem])))
   )
 
 (defn -main
@@ -191,5 +219,6 @@
   [& args]
   ;(println (parse "(+ 6  5)"))
   (println (parse "(define x 10)"))
-  (println (parse "(1+ x)"))
+  (parse "(define y 20)")
+  (println (parse ""))
   )
