@@ -104,19 +104,24 @@
   "Returns  the string for possible keyword"
   [input-str]
   (let [x (get env (keyword input-str))]
-    x))
+    (if (nil? x)
+      (get env input-str)
+      x)))
 (declare parse-spl-form)
 (defn get-next-token
   ""
   [input-str]
-  (let [x (subs input-str 0 (or (cls/index-of input-str " ") (count input-str) 30))] ;assuming name cannot be longer than 30
+  (let [x (subs input-str 0 (or (cls/index-of input-str " ") (cls/index-of input-str ")") (count input-str) 30))] ;assuming name cannot be longer than 30
     (let [form (parse-spl-form x)]
       (if (nil? form)
-        [(parse-keyword x),(subs input-str (count x))]
+        (let [result (parse-keyword x)]
+          (if (nil? result)
+            [x (subs input-str (count x))]
+            [result (subs input-str (count x))]))
         [form (subs input-str (count form))]
         ))
     ))
-(def spl-forms '("if" "lambda"))
+(def spl-forms '("if" "lambda" "define"))
 (defn parse-spl-form
   [input]
   (let [form  ((fn [[x & xs]]
@@ -129,7 +134,11 @@
     (if (nil? form)
       nil
       form)))
-(def factory-parsers (list parse-parens parse-boolean parse-number parse-string))
+(defn parse-vars
+  [input-str]
+  (get-next-token input-str)
+  )
+(def factory-parsers (list parse-parens parse-boolean parse-number parse-string parse-vars))
 
 (defn parse-values
   "Tries all parsers & return when a parser can parse the value"
@@ -152,20 +161,27 @@
     (let [[res rem] (parse-values remain)]
       (if (= res \()
         (let [[func remm] (get-next-token rem)]
-          (if (nil? func)
-            (do
+          (case func
+            nil (do
               (println "Syntax error: expected function after '('")
               (System/exit 0))
             (let [[result remaining]
                   (loop [args [] remain remm]
                     (if (= \) (first remain))
-                      [(apply func args) (subs remain 1)]
-                      (let [[arg rem-str] (parse remain)]
-                        (cond
-                          (nil? arg) (do (println "Unexpected Termination missing ')'") (System/exit 0))
-                          :else (recur (conj args arg) rem-str))
-                        )))]
-              [result remaining])))
+                      (case func
+                        "if" [(if (args 0) (args 1) (args 2)) (subs remain 1)]
+                        "define" (do (def env (assoc env (args 0) (args 1)))
+                                     [nil (subs remain 1)])
+                        [(apply func args) (subs remain 1)]
+                        )
+                        (let [[arg rem-str] (parse remain)]
+                          (cond
+                            (nil? arg) (do (println "Unexpected Termination missing ')'") (System/exit 0))
+                            :else (recur (conj args arg) rem-str))
+                          )
+                      ))]
+              [result remaining]))
+          )
         ;it is an argument
         [res rem])))
   )
@@ -174,5 +190,6 @@
   "I don't do a whole lot ... yet."
   [& args]
   ;(println (parse "(+ 6  5)"))
-  (println (get-next-token "if as"))
+  (println (parse "(define x 10)"))
+  (println (parse "(1+ x)"))
   )
