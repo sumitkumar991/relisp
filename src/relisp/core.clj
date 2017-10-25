@@ -13,10 +13,13 @@
    :ceiling (fn cel ([x] (cel x 1)) ([x y] [(let [r (/ x y)] (cond (integer? r) r :else (int (inc r)))) (rem x y)]) )
    :max max :min min :round #(int (+ 0.5 %))
    :nil "null"
+   :null nil?
    ; list functions
+   :list list :car first :cdr rest :cddr (comp rest rest) :cons cons :last butlast
    ;:append conj :car first :cdr rest
    })
 (def global-env {})                                         ;keeps all globals as k/v pairs
+(def rest-str #(if (empty? %) nil (subs % 1)) )
 
 (def MAX-LEN 30)
 
@@ -39,15 +42,6 @@
         [x (subs input-str (count x))]
         [nil input-str]))
     [nil input-str]))
-;
-;(defn parse-null
-;  "Parses null values to nil"
-;  [input-str]
-;  (if (nil? input-str)
-;    [nil nil]
-;    (if (cls/starts-with? input-str "null")
-;      ["null" (subs input-str 4)]
-;      [nil input-str])))
 
 (def esc-list '(\space \backspace \newline \formfeed \tab \return))
 (defn parse-space
@@ -109,34 +103,65 @@
         (if a [a b]
               [a b])))))
 
-(defn parse-keyword
-  "Returns  the string for possible keyword"
+(defn find-next-exp
   [input-str]
-  (let [x (get env (keyword input-str))]
-    x))
+  (let [sp-removed (parse-space input-str)]
+    (if (= (first sp-removed) \()
+      (loop [temp-str (rest-str sp-removed) count 1 indd 1]
+        (cond
+          (empty? temp-str) (do (println "error: no matching parenthesis")
+                                (System/exit 0))
+          (= count 0) [(subs sp-removed 0 indd) (subs sp-removed indd)]
+          (= (first temp-str) \() (recur (subs temp-str 1) (inc count) (inc indd))
+          (= (first temp-str) \)) (recur (subs temp-str 1) (dec count) (inc indd))
+          :else (recur (subs temp-str 1) count (inc indd)))
+        )
+      (let [x (subs sp-removed 0 (or (cls/index-of sp-removed " ") (cls/index-of sp-removed ")") (count sp-removed)))]
+        [x (subs sp-removed (count x))])
+      )))
 
-(defn check-global-env
-  "Check global environment for variable values"
+(defn get-all-args
+  "vector of all args upto closing )"
+  [input-str]
+  (let [sp-removed (parse-space input-str)]
+    (loop [arg-list [] remaining-str sp-removed]
+      (let [[exp remm] (find-next-exp remaining-str)]
+        (if (or (= exp "") (= (first remaining-str) \)))
+          [arg-list remaining-str]
+          (recur (conj arg-list exp) remm))
+        ))))
+
+(defn parse-keyword
+  "Returns the string for possible keyword"
   [input]
-  (get global-env input))
+  (let [x (get env (keyword input))]
+    x))
+(defn parse-key
+  "Parses string for keywords"
+  [input-str]
+  (let [[x xs] (find-next-exp input-str)]
+    (let [res (get env (keyword x))]
+      (if (nil? res)
+        [nil input-str]
+        [res (subs input-str (count x))]))
+    )
+  )
+(defn check-env
+  "Check global environment for variable values"
+  [input curr-env]
+  (get curr-env input))
 
 (declare parse-spl-form)
 
-(defn get-token
-  "Gets 1st token separated by space or ends with )"
-  [input-str]
-  (let [x (subs input-str 0 (or (cls/index-of input-str " ") (cls/index-of input-str ")") (count input-str)))]
-    [x (subs input-str (count x))])
-  )
 (defn get-next-token
   "Parses & checks if next token is spl form or keyword or is a global variable in order"
   [input-str]
-  (let [[x xs] (get-token input-str)] ;assuming name cannot be longer todo
+  (let [[x xs] (find-next-exp input-str)] ;todo: assuming name cannot be longer than fixed
     (let [form (parse-spl-form x)]
       (if (nil? form)
         (let [result (parse-keyword x)]
           (if (nil? result)
-            (let [res-var (check-global-env x)]
+            (let [res-var (check-env x global-env)]
               (if (nil? res-var)
                 [x (subs input-str (count x))]
                 [res-var (subs input-str (count x))]))
@@ -144,7 +169,7 @@
         [form (subs input-str (count form))]
         ))
     ))
-(def spl-forms '("if" "lambda" "define"))
+(def spl-forms '("if" "lambda" "define" "funcall"))
 (defn parse-spl-form
   [input]
   (let [form  ((fn [[x & xs]]
@@ -160,65 +185,88 @@
 
 (defn parse-vars
   "Checks the global env for variables"
-  [input-str]
-  (let [[token remain] (get-token input-str)]
-    (let [x (check-global-env token)]
+  [input-str curr-env]
+  (let [[token remain] (find-next-exp input-str)]
+    (let [x (check-env token curr-env)]
       (if (nil? x)
-        [nil input-str]
-        [x remain])))
-  )
-(def factory-parsers (list parse-parens parse-boolean parse-number parse-string parse-vars get-next-token)) ;order of parse-vars & get-next-token is !imp
+        (let [y (check-env token global-env)]
+          (if (nil? y)
+            [nil input-str]
+            [y remain]))
+        [x remain]))
+    ))
+
+(def factory-parsers (list parse-parens parse-key parse-boolean parse-number parse-string parse-vars get-next-token)) ;order of parse-vars & get-next-token is !imp
 
 (defn parse-values
   "Tries all parsers & return when a parser can parse the value"
-  ([input-str]
+  ([input-str curr-env]
     (if (or (empty? input-str) (nil? input-str))
       [nil input-str]
-      (parse-values factory-parsers input-str)))
-  ([[p & parsers] input-str]
+      (parse-values factory-parsers input-str curr-env)))
+  ([[p & parsers] input-str curr-env]
    (if (nil? p)
      [nil input-str]
-     (let [[result rem] (p input-str)]
-       (if (not (nil? result))
-         [result rem]
-         (parse-values parsers rem))))))
+     (if (or (= p parse-vars))
+       (let [[result rem] (p input-str curr-env)]
+         (if (not (nil? result))
+           [result rem]
+           (recur parsers rem curr-env)))
+       (let [[result rem] (p input-str)]
+         (if (not (nil? result))
+           [result rem]
+           (recur parsers rem curr-env)))
+       )
+     )))
 
+(declare parse)
+(defn eval-exp
+  "evaluation of spl form"
+  [func input-str curr-env]
+  (let [[args rem-str] (get-all-args input-str)]
+    (case func
+      "if" (do (let [evaled-args (map #(get % 0 ) (map parse args))]
+                 [(if (nth evaled-args 0) (nth evaled-args 1) (nth evaled-args 2)) rem-str]))
+      "define" (do (def global-env (assoc global-env (args 0) ((parse (args 1)) 0)))
+                   [nil (subs rem-str 1)])
+      "funcall" (let [[arg-list lam-body] (parse (args 0))]
+                  (let [evaled-args (map #(nth % 0) (map parse (rest args)))]
+                    (let [local-env (zipmap (map str arg-list)  evaled-args)]
+                      [(get (parse lam-body local-env) 0) rem-str])))
+      "lambda" (let [arg-list (cls/split (cls/trim (subs (args 0) 1 (cls/index-of (args 0) ")"))) #" ")]
+                  [arg-list (args 1)])                                            ;returns vector of [args quote-body]
+      (let [final-args (map #(get % 0) (map (fn [elem] (parse elem curr-env)) args)) ]
+        [(apply func final-args) rem-str])))
+)
 (defn parse
-  ""
-  [input-str]
-  (let [remain (parse-space input-str)]
-    (let [[res rem] (parse-values remain)]
-      (if (= res \()
-        (let [[func remm] (get-next-token rem)]
-          (case func
-            nil (do
-              (println "Syntax error: expected function after '('")
-              (System/exit 0))
-            (let [[result remaining]
-                  (loop [args [] remain remm]
-                    (if (= \) (first remain))
-                      (case func
-                        "if" [(if (args 0) (args 1) (args 2)) (subs remain 1)]
-                        "define" (do (def global-env (assoc global-env (args 0) (args 1)))
-                                     [nil (subs remain 1)])
-                        [(apply func args) (subs remain 1)]
-                        )
-                        (let [[arg rem-str] (parse remain)]
-                          (cond
-                            (nil? arg) (do (println "Unexpected Termination missing ')'") (System/exit 0))
-                            :else (recur (conj args arg) rem-str)))))]
-              [result remaining])
-            )
-          )
-        ;it is an argument
-        [(if (= res "null") nil res) rem])))
+  "parses whole string"
+  ([input-str]
+    (parse input-str global-env))
+  ([input-str curr-env]
+   (let [sp-result (parse-space input-str)]
+     (let [[val-res val-rem] (parse-values sp-result curr-env)]
+       (if (= val-res \()
+         (let [[func remm] (get-next-token val-rem)]
+           (eval-exp func remm curr-env)
+           )
+         [(if (= val-res "null") nil val-res) val-rem]                   ;it's an argument
+         ))))
   )
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  ;(println (parse "(+ 6  5)"))
+  ;(println (parse "(+ 6 5)"))
   (println (parse "(define x 10)"))
-  (parse "(define y 20)")
-  (println (parse ""))
+  (parse "(define abc (lambda (x) (+ x x)))")
+  (println (parse "(lambda (x) (+ x x))"))
+  ;(parse "(define y 20)")
+  ;(println (parse "y"))
+  ;(println (parse "(cddr (list 4 5 \"sk\"))"))
+  ;(println (parse "(+ 4 5)"))
+  ;(println (parse "(if 5 6 4)"))
+  ;(println (find-next-exp "(func x (func2 a b)) abcd"))
+  ;(println (find-next-exp "(sad))"))
+  (println (parse "(funcall abc 50)"))
+  (println (parse "x"))
   )
