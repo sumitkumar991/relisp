@@ -18,7 +18,10 @@
    :list list :car first :cdr rest :cddr (comp rest rest) :cons cons :last butlast
    ;:append conj :car first :cdr rest
    })
-(def global-env {})                                         ;keeps all globals as k/v pairs
+(def global-env
+  {
+   :exit "exit"
+   })                                         ;keeps all globals as k/v pairs
 (def rest-str #(if (empty? %) nil (subs % 1)) )
 
 (def MAX-LEN 30)
@@ -144,8 +147,7 @@
       (if (nil? res)
         [nil input-str]
         [res (subs input-str (count x))]))
-    )
-  )
+    ))
 (defn check-env
   "Check global environment for variable values"
   [input curr-env]
@@ -167,8 +169,8 @@
                 [res-var (subs input-str (count x))]))
             [result (subs input-str (count x))]))
         [form (subs input-str (count form))]
-        ))
-    ))
+        ))))
+
 (def spl-forms '("if" "lambda" "define" "funcall"))
 (defn parse-spl-form
   [input]
@@ -193,8 +195,7 @@
           (if (nil? y)
             [nil input-str]
             [y remain]))
-        [x remain]))
-    ))
+        [x remain]))))
 
 (def factory-parsers (list parse-parens parse-key parse-boolean parse-number parse-string parse-vars get-next-token)) ;order of parse-vars & get-next-token is !imp
 
@@ -227,14 +228,21 @@
     (case func
       "if" (do (let [evaled-args (map #(get % 0 ) (map parse args))]
                  [(if (nth evaled-args 0) (nth evaled-args 1) (nth evaled-args 2)) rem-str]))
+
       "define" (do (def global-env (assoc global-env (args 0) ((parse (args 1)) 0)))
                    [nil (subs rem-str 1)])
-      "funcall" (let [[arg-list lam-body] (parse (args 0))]
+
+      "funcall" (let [[[arg-list lam-body] remmm] (parse (args 0))]
                   (let [evaled-args (map #(nth % 0) (map parse (rest args)))]
-                    (let [local-env (zipmap (map str arg-list)  evaled-args)]
-                      [(get (parse lam-body local-env) 0) rem-str])))
+                    (if (not= (count arg-list) (count evaled-args))
+                      (do (println (str "Invalid arity (" (count evaled-args) ") for function required ("  (count arg-list) ")"))
+                          (System/exit 1))
+                      (let [local-env (zipmap arg-list  evaled-args)]
+                        [(get (parse lam-body local-env) 0) rem-str]))
+                    ))
+
       "lambda" (let [arg-list (cls/split (cls/trim (subs (args 0) 1 (cls/index-of (args 0) ")"))) #" ")]
-                  [arg-list (args 1)])                                            ;returns vector of [args quote-body]
+                  [[arg-list (args 1)] rem-str])                                            ;returns vector of [args quote-body]
       (let [final-args (map #(get % 0) (map (fn [elem] (parse elem curr-env)) args)) ]
         [(apply func final-args) rem-str])))
 )
@@ -250,16 +258,21 @@
            (eval-exp func remm curr-env)
            )
          [(if (= val-res "null") nil val-res) val-rem]                   ;it's an argument
-         ))))
-  )
+         )))))
+
+(defn interpret
+  ""
+  [input-str]
+  (get (parse input-str) 0))
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
   ;(println (parse "(+ 6 5)"))
-  (println (parse "(define x 10)"))
-  (parse "(define abc (lambda (x) (+ x x)))")
-  (println (parse "(lambda (x) (+ x x))"))
+  ;(println (parse "(define x 10)"))
+  (parse "(define abc (lambda (x y) (+ x y)))")
+  ;(println (parse "(define fact (lambda (x) (if (<= x 1) 1 (funcall fact (- x 1)) )) )"))
+  ;(println (interpret "fact"))
   ;(parse "(define y 20)")
   ;(println (parse "y"))
   ;(println (parse "(cddr (list 4 5 \"sk\"))"))
@@ -267,6 +280,8 @@
   ;(println (parse "(if 5 6 4)"))
   ;(println (find-next-exp "(func x (func2 a b)) abcd"))
   ;(println (find-next-exp "(sad))"))
-  (println (parse "(funcall abc 50)"))
-  (println (parse "x"))
+  ;(println (interpret "abc"))
+  (println (interpret "(funcall abc 2 56)"))
+
+  ;(println (parse "x"))
   )
