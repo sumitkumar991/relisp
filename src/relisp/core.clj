@@ -18,10 +18,7 @@
    :list list :car first :cdr rest :cddr (comp rest rest) :cons cons :last butlast
    ;:append conj :car first :cdr rest
    })
-(def global-env
-  {
-   :exit "exit"
-   })                                         ;keeps all globals as k/v pairs
+(def global-env {})                                         ;keeps all globals as k/v pairs
 (def rest-str #(if (empty? %) nil (subs % 1)) )
 
 (def MAX-LEN 30)
@@ -261,27 +258,24 @@
          )))))
 
 (defn interpret
-  ""
+  "Returns the evaluated expression value"
   [input-str]
   (get (parse input-str) 0))
 
 (defn -main
-  "I don't do a whole lot ... yet."
+  "Driver function for repl application"
   [& args]
-  ;(println (parse "(+ 6 5)"))
-  ;(println (parse "(define x 10)"))
-  (parse "(define abc (lambda (x y) (+ x y)))")
-  ;(println (parse "(define fact (lambda (x) (if (<= x 1) 1 (funcall fact (- x 1)) )) )"))
-  ;(println (interpret "fact"))
-  ;(parse "(define y 20)")
-  ;(println (parse "y"))
-  ;(println (parse "(cddr (list 4 5 \"sk\"))"))
-  ;(println (parse "(+ 4 5)"))
-  ;(println (parse "(if 5 6 4)"))
-  ;(println (find-next-exp "(func x (func2 a b)) abcd"))
-  ;(println (find-next-exp "(sad))"))
-  ;(println (interpret "abc"))
-  (println (interpret "(funcall abc 2 56)"))
-
-  ;(println (parse "x"))
+  (loop []
+    (print "relisp=> ")
+    (flush)
+    (let [input (read-line)]
+      (if (= input "exit")
+        (do (println "Bye, See u soon")
+            (System/exit 0))
+        (do (println (interpret input))
+          (recur))
+        ))
+    )
+  ;(parse "(define abc (lambda (x y) (+ x y)))")
+  ;(println (interpret "(funcall abc 2 56)"))
   )
