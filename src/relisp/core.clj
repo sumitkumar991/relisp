@@ -16,7 +16,6 @@
    :null nil?
    ; list functions
    :list list :car first :cdr rest :cddr (comp rest rest) :cons cons :last butlast
-   ;:append conj :car first :cdr rest
    })
 (def global-env {})                                         ;keeps all globals as k/v pairs
 (def rest-str #(if (empty? %) nil (subs % 1)) )
@@ -167,7 +166,7 @@
         [form (subs input-str (count form))]
         ))))
 
-(def spl-forms '("if" "lambda" "define" "funcall"))
+(def spl-forms '("if" "lambda" "define" "funcall" "reduce"))
 (defn parse-spl-form
   [input]
   (let [form  ((fn [[x & xs]]
@@ -216,6 +215,30 @@
        ))))
 
 (declare parse)
+(defn p-reduce
+  "Reduce a collection given a lambda"
+  [lambda coll]
+  (let [[arg-list lam-body] lambda]
+    (if (= (count coll) 1)
+      (first coll)
+      (cond
+        (<= (count arg-list) 1) (do (println "Wrong no of arguments (2)")
+                                    nil)
+        (> (count arg-list) (count coll))
+        (do (println (str "Invalid arity for function- required (" (count arg-list) ")")))
+        :else (let [local-env (zipmap arg-list coll)]
+                (recur lambda (cons (parse lam-body local-env) (drop (count arg-list) coll))))
+        ))))
+(defn p-map
+  [lambda coll buffer]
+  (let [[arg-list lam-body] lambda]
+    (cond
+      (empty? coll) (reverse buffer)
+      (> (count arg-list) 1) (do (println "Invalid Arity (" (count arg-list) ")") nil)
+      :else (let [local-env (zipmap arg-list coll)]
+              (recur lambda (drop 1 coll)  (conj buffer (parse lam-body local-env))))
+      )))
+
 (defn eval-exp
   "evaluation of spl form"
   [func input-str curr-env]
@@ -240,6 +263,16 @@
 
       "lambda" (let [arg-list (cls/split (cls/trim (subs (args 0) 1 (cls/index-of (args 0) ")"))) #" ")]
                  [arg-list (args 1)]) ;returns vector of [args quote-body]
+      "reduce" (let [red-func (parse (args 0))]
+                 (if (vector? red-func)                       ;if true it's a lambda
+                   (p-reduce red-func (parse (args 1)))
+                   (reduce red-func (parse (args 1)))
+                   ))
+      "map" (let [red-func (parse (args 0))]
+              (if (vector? red-func)                       ;if true it's a lambda
+                (p-map red-func (parse (args 1)) '())
+                (map red-func (parse (args 1)))
+                ))
       (let [final-args (map (fn [elem] (parse elem curr-env)) args) ]
         (if (or (= rem-str ")"))
           (apply func final-args)
@@ -268,9 +301,6 @@
 (defn -main
   "Driver function for repl application"
   [& args]
-  ;(parse "(+ (+ 2 3) (- 5 3))")
-  ;(println (parse "(+ (+ 3 5) (+ 5 6))"))
-  (println (parse "(funcall (lambda (x) (+ x 1)) 6)"))
   (loop []
     (print "relisp=> ")
     (flush)
@@ -280,7 +310,4 @@
             (System/exit 0))
         (do (println (interpret input))
           (recur)))
-      ))
-  ;(parse "(define abc (lambda (x y) (+ x y)))")
-  ;(println (interpret "(funcall abc 2 56)"))
-  )
+      )))
