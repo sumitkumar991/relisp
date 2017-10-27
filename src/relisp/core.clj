@@ -109,8 +109,7 @@
     (if (= (first sp-removed) \()
       (loop [temp-str (rest-str sp-removed) count 1 indd 1]
         (cond
-          (empty? temp-str) (do (println "error: no matching parenthesis")
-                                (System/exit 0))
+          (empty? temp-str) (do (println "error: no matching parenthesis"))
           (= count 0) [(subs sp-removed 0 indd) (subs sp-removed indd)]
           (= (first temp-str) \() (recur (subs temp-str 1) (inc count) (inc indd))
           (= (first temp-str) \)) (recur (subs temp-str 1) (dec count) (inc indd))
@@ -126,7 +125,7 @@
   (let [sp-removed (parse-space input-str)]
     (loop [arg-list [] remaining-str sp-removed]
       (let [[exp remm] (find-next-exp remaining-str)]
-        (if (or (= exp "") (= (first remaining-str) \)))
+        (if (or (= exp "") (= (first remaining-str) \) ))
           [arg-list remaining-str]
           (recur (conj arg-list exp) remm))
         ))))
@@ -224,7 +223,10 @@
   (let [[args rem-str] (get-all-args input-str)]
     (case func
       "if" (do (let [evaled-args (map #(get % 0 ) (map parse args))]
-                 [(if (nth evaled-args 0) (nth evaled-args 1) (nth evaled-args 2)) rem-str]))
+                 (cond
+                   (< (count evaled-args) 3) (println "Too few arguments to if")
+                   (> (count evaled-args) 3) (println "Too many arguments to if")
+                   :else [(if (nth evaled-args 0) (nth evaled-args 1) (nth evaled-args 2)) rem-str])))
 
       "define" (do (def global-env (assoc global-env (args 0) ((parse (args 1)) 0)))
                    [nil (subs rem-str 1)])
@@ -233,15 +235,20 @@
                   (let [evaled-args (map #(nth % 0) (map parse (rest args)))]
                     (if (not= (count arg-list) (count evaled-args))
                       (do (println (str "Invalid arity (" (count evaled-args) ") for function required ("  (count arg-list) ")"))
-                          (System/exit 1))
+                          )
                       (let [local-env (zipmap arg-list  evaled-args)]
                         [(get (parse lam-body local-env) 0) rem-str]))
                     ))
 
       "lambda" (let [arg-list (cls/split (cls/trim (subs (args 0) 1 (cls/index-of (args 0) ")"))) #" ")]
-                  [[arg-list (args 1)] rem-str])                                            ;returns vector of [args quote-body]
+                  [[arg-list (args 1)] rem-str]) ;returns vector of [args quote-body]
       (let [final-args (map #(get % 0) (map (fn [elem] (parse elem curr-env)) args)) ]
-        [(apply func final-args) rem-str])))
+        (if (or (= rem-str ")"))
+          (do
+            ;(println func)
+              [(apply func final-args) (rest-str rem-str)])
+          (println "Syntax Error: Unmatched '(' "))
+        )))
 )
 (defn parse
   "parses whole string"
@@ -252,9 +259,8 @@
      (let [[val-res val-rem] (parse-values sp-result curr-env)]
        (if (= val-res \()
          (let [[func remm] (get-next-token val-rem)]
-           (eval-exp func remm curr-env)
-           )
-         [(if (= val-res "null") nil val-res) val-rem]                   ;it's an argument
+           (eval-exp func remm curr-env))
+         [(if (= val-res "null") nil val-res) val-rem] ;it's an argument
          )))))
 
 (defn interpret
@@ -265,6 +271,7 @@
 (defn -main
   "Driver function for repl application"
   [& args]
+  (parse "(+  3 4)")
   (loop []
     (print "relisp=> ")
     (flush)
@@ -273,9 +280,8 @@
         (do (println "Bye, See u soon")
             (System/exit 0))
         (do (println (interpret input))
-          (recur))
-        ))
-    )
+          (recur)))
+      ))
   ;(parse "(define abc (lambda (x y) (+ x y)))")
   ;(println (interpret "(funcall abc 2 56)"))
   )
