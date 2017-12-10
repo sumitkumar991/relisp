@@ -1,36 +1,35 @@
 # relisp
 
-FIXME: description
+relisp is a Lisp Interpreter written in clojure. Writing an interpreter is good exercise to 
 
-## Installation
+understand how programming languages work.
 
-Download from http://example.com/FIXME.
+## Features
 
-## Usage
+Relisp supports all the basic arithmetic operators & list modifier functions in lisp.
 
-FIXME: explanation
+Supported special forms include:
 
-    $ java -jar relisp-0.1.0-standalone.jar [args]
+### if, define, lambda, funcall, map, reduce
 
-## Options
+## How to run
 
-FIXME: listing of options this app accepts.
+enter command `lein run` in your project root, now enter the lisp expression to be evaluated & hit enter.
 
-## Examples
+## Some Examples of expression
 
-...
-
-### Bugs
-
-...
-
-### Any Other Sections
-### That You Think
-### Might be Useful
-
-## License
-
-Copyright © 2017 FIXME
-
-Distributed under the Eclipse Public License either version 1.0 or (at
-your option) any later version.
+```
+    (+ 1 4)
+    
+    (define x 10)
+    
+    (if (= x 10) true false)
+    
+    (reduce + (list 1 3 5))
+    
+    (def sum2 (lambda (a b) (+ a b)))
+    (funcall sum2 4 5)
+    
+    (map 1+ (list 2 3 4))
+    
+```
